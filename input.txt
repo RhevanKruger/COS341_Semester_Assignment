@@ -1,1 +1,1 @@
-begin main
+main num V_x begin if V_x eq 0 then halt else if V_x div 2 eq 0 then print "Even" else print "Odd" end
