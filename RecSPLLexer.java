@@ -28,7 +28,7 @@ public class RecSPLLexer {
     private static final String FUNCTION_REGEX = "F_[a-z]([a-z]|[0-9])*";
     private static final String TEXT_REGEX = "\"[A-Z][a-z]{1,7}\"";
     private static final String NUMBER_REGEX = "-?[0-9]+(\\.[0-9]+)?";
-    private static final String RESERVED_KEYWORDS_REGEX = "(main|begin|end|if|then|else|halt|print|skip|input|output|num|text|void|call|add|sub|mul|div|eq|grt|and|or|not|sqrt)";
+    private static final String RESERVED_KEYWORDS_REGEX = "(main|begin|end|if|then|else|halt|print|skip|input|output|num|text|void|call|add|sub|mul|div|eq|grt|and|or|not|sqrt|=|<|\\(|\\)|\\{|\\}|,|;)";
 
     // Error handling for lexical errors
     private static void throwLexicalError(String message) throws Exception {

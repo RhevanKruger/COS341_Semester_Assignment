@@ -65,4 +65,15 @@ class Node {
     public void removeChild(Node childNode) {
         children.remove(childNode);
     }
+    public String toString() {
+        //return node representation with its children
+        StringBuilder node = new StringBuilder();
+        node.append("Node{");
+        node.append("unid=").append(unid);
+        node.append(", symbol='").append(symbol).append('\'');
+        node.append(", children=").append(children);
+        node.append(", isLeaf=").append(isLeaf);
+        node.append('}');
+        return node.toString();
+    }
 }

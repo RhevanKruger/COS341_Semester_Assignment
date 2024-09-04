@@ -10,6 +10,7 @@ import org.w3c.dom.NodeList;
 
 import java.util.ArrayList;
 import java.io.*;
+import java.sql.Array;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -35,6 +36,7 @@ class RecSPLParser {
     private SyntaxTree syntaxTree;
     private int currentTokenIndex;
     private List<Token> tokens;
+    private Map<String, Set<String>> firstSets;
 
     public RecSPLParser(String xmlFilePath) {
         this.tokens = new ArrayList<>();;
@@ -43,6 +45,8 @@ class RecSPLParser {
         parseXMLFile(xmlFilePath);
         // Initialize grammar rules
         initializeGrammar();
+        // Compute first sets(we will use this to prune the parse tree)
+        firstSets = computeFirstSets(grammar);
     }
     private void parseXMLFile(String xmlFilePath) {
         try {
@@ -68,7 +72,43 @@ class RecSPLParser {
             e.printStackTrace();
         }
     }
-
+    private Map<String, Set<String>> computeFirstSets(Map<String, List<List<String>>> grammar) {
+        Map<String, Set<String>> firstSets = new HashMap<>();
+    
+        for (String nonTerminal : grammar.keySet()) {
+            firstSets.put(nonTerminal, new HashSet<>());
+        }
+    
+        boolean changed;
+        do {
+            changed = false;
+            for (String nonTerminal : grammar.keySet()) {
+                Set<String> firstSet = firstSets.get(nonTerminal);
+                for (List<String> production : grammar.get(nonTerminal)) {
+                    for (String symbol : production) {
+                        if (!grammar.containsKey(symbol)) { // Terminal
+                            if (firstSet.add(symbol)) {
+                                changed = true;
+                            }
+                            break;
+                        } else { // Non-terminal
+                            Set<String> symbolFirstSet = firstSets.get(symbol);
+                            int prevSize = firstSet.size();
+                            firstSet.addAll(symbolFirstSet);
+                            if (firstSet.size() > prevSize) {
+                                changed = true;
+                            }
+                            if (!symbolFirstSet.contains("")) {
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        } while (changed);
+    
+        return firstSets;
+    }
     private void initializeGrammar() {
         grammar.put("PROG", Arrays.asList(
             Arrays.asList("main", "GLOBVARS", "ALGO", "FUNCTIONS")
@@ -103,7 +143,8 @@ class RecSPLParser {
             Arrays.asList("print", "ATOMIC"),
             Arrays.asList("ASSIGN"),
             Arrays.asList("CALL"),
-            Arrays.asList("BRANCH")
+            Arrays.asList("BRANCH"),
+            Arrays.asList("return", "ATOMIC")
         ));
         
         grammar.put("ATOMIC", Arrays.asList(
@@ -221,68 +262,100 @@ class RecSPLParser {
     public void parse() {
         Node root = new Node(1, "PROG", false); // Start symbol is "PROG"
         syntaxTree = new SyntaxTree(root); // Ensure syntaxTree is initialized
-    
-        while (tokens.size() > currentTokenIndex) {
-            parseSymbol(root, "PROG", tokens.get(currentTokenIndex));
-        }
+        parseSymbol(root, "PROG", tokens.get(currentTokenIndex));
     }
+    private boolean parseSymbol(Node parentNode, String symbol, Token currentToken) {
+        System.out.println("parseSymbol: " + symbol + " token " + currentToken.word + " currentTokenIndex: " + currentTokenIndex);
     
-    private void parseSymbol(Node parentNode, String symbol, Token currentToken) {
-        System.out.println("parseSymbol: " + symbol + " token " + currentToken.word);
-        
         if (!grammar.containsKey(symbol)) {
-            // Terminal symbol: it should match the current token
+            if (parentNode.getSymbol().equals(",") && symbol.equals(",")) {
+                if (currentToken.word.equals(",")) {
+                    Node commaNode = new Node(generateUNID(), ",", true);
+                    parentNode.addChild(commaNode);
+                    syntaxTree.addLeafNode(commaNode);
+                    currentTokenIndex++;
+                    return true;
+                } else {
+                    return false;
+                }
+            }
+            else if (parentNode.getSymbol().equals(";") && symbol.equals(";")) {
+                if (currentToken.word.equals(";")) {
+                    Node commaNode = new Node(generateUNID(), ";", true);
+                    parentNode.addChild(commaNode);
+                    syntaxTree.addLeafNode(commaNode);
+                    currentTokenIndex++;
+                    return true;
+                } else {
+                    return false;
+                }
+            }
             if (reachable(symbol, currentToken)) {
+                System.out.println("Reached terminal symbol: " + symbol + " token " + currentToken.word + " currentTokenIndex: " + currentTokenIndex);
                 Node childNode = new Node(generateUNID(), currentToken.word, true);
                 parentNode.addChild(childNode);
                 syntaxTree.addLeafNode(childNode);
                 currentTokenIndex++;
+                return true;
             } else {
-                throw new RuntimeException("Syntax error: Unexpected token " + currentToken.word + " at position " + currentTokenIndex);
+                return false;
             }
         } else {
-            // Handle nullable non-terminals
-            if (!reachable(symbol, currentToken) && isNullable(symbol)) {
-                System.out.println("Nullable non-terminal " + symbol + " matched as empty");
-                Node emptyNode = new Node(generateUNID(), symbol + "_empty", false);
-                parentNode.addChild(emptyNode);
-                syntaxTree.addInnerNode(emptyNode);
-                return;
-            }
-    
             boolean matched = false;
             for (List<String> production : grammar.get(symbol)) {
-                System.out.println("currentIndex: " + currentTokenIndex + " " + production + " " + currentToken.word);
-                int savedIndex = currentTokenIndex;
                 List<Node> childNodes = new ArrayList<>();
-                boolean productionMatches = true;
-    
-                for (String childSymbol : production) {
-                    if (currentTokenIndex >= tokens.size()) {
-                        productionMatches = false;
+                ArrayList<Boolean> productionMatches =new ArrayList<Boolean>();
+                            
+                //handle terminal rules will one element in their list
+                System.out.println("PRODUCATION: " + production+ " TOKEN: " + currentToken.word + " currentTokenIndex: " + currentTokenIndex);
+                if(production.size() == 1 && !grammar.containsKey(production.get(0))) {
+                    Node tempNode = new Node(generateUNID(), production.get(0), false);
+                    if (parseSymbol(tempNode, production.get(0), currentToken)) {
+                        parentNode.addChild(tempNode);
+                        matched = true;
                         break;
-                    }
-    
-                    Node tempNode = new Node(generateUNID(), childSymbol, false);
-                    parseSymbol(tempNode, childSymbol, tokens.get(currentTokenIndex));
-    
-                    // If the child node has children, it means it was successfully parsed
-                    if (!tempNode.getChildren().isEmpty() || reachable(childSymbol, tokens.get(currentTokenIndex))) {
-                        childNodes.add(tempNode);
                     } else {
-                        productionMatches = false;
-                        currentTokenIndex = savedIndex;
+                        continue;//check other rules
+                    }
+                }
+                //handle non terminal symbols with keyword 
+                if(!grammar.containsKey(production.get(0)) && !production.get(0).equals(currentToken.word)) {
+                    continue;//check other rules
+                }
+                //prune based on first sets
+                if (grammar.containsKey(production.get(0))&&!firstSets.get(production.get(0)).contains(getTokenWord(currentToken))) {
+                    continue;//check other rules
+                }
+
+                //handle non terminal symbols with multiple children
+                for (String childSymbol : production) {
+                    System.out.println("CHILD SYMBOL: " + childSymbol);
+                    if (currentTokenIndex >= tokens.size()) {
+                        productionMatches.add(false);
                         break;
                     }
-    
-                    // Update the current token after parsing each symbol
+                    if(childSymbol.equals(symbol) ) {
+                        //handle nullable symbols
+                        productionMatches.add(true);
+                        if(!allProductionMatchesTrue(productionMatches))
+                            break;//check other rules
+                    }
+                    Node tempNode = new Node(generateUNID(), childSymbol, false);
+                    boolean temp = parseSymbol(tempNode, childSymbol, tokens.get(currentTokenIndex));
+                    if (temp ) {
+                        childNodes.add(tempNode);
+                        productionMatches.add(true);
+                    } else {
+                        productionMatches.add(false);
+                        //continue checking other child symbols
+                    }
                     if (currentTokenIndex < tokens.size()) {
                         currentToken = tokens.get(currentTokenIndex);
                     }
                 }
     
-                // If we matched the production, add the nodes to the syntax tree
-                if (productionMatches) {
+                if (productionMatches.contains(true)) {
+                    System.out.println("Matched Non terminal production: " + production + " token " + currentToken.word + " currentTokenIndex: " + currentTokenIndex);
                     Node nonTerminalNode = new Node(generateUNID(), symbol, false);
                     for (Node childNode : childNodes) {
                         nonTerminalNode.addChild(childNode);
@@ -292,7 +365,9 @@ class RecSPLParser {
                     matched = true;
                     break;
                 } else {
-                    currentTokenIndex = savedIndex;
+                    //print tokenindex and savedtokenindex
+                    //System.out.println("TokenIndex: " + currentTokenIndex + " SavedTokenIndex: " + savedTokenIndex);
+                    break;
                 }
             }
     
@@ -300,55 +375,42 @@ class RecSPLParser {
                 throw new RuntimeException("Syntax error: Unexpected token " + currentToken.word + " at position " + currentTokenIndex);
             }
         }
+        return true;
     }
     
-    
-    private boolean isNullable(String symbol) {
-        // Check if the non-terminal can produce an empty sequence
-        for (List<String> production : grammar.get(symbol)) {
-            if (production.isEmpty()) {
-                return true; // Nullable if there's an empty production
+    private boolean allProductionMatchesTrue(ArrayList<Boolean> productionMatches) {
+        for (Boolean match : productionMatches) {
+            if (!match) {
+                return false;
             }
         }
-        return false;
+        return true;
     }
-    
-    
+    private boolean isNullable(String symbol) {
+        return grammar.get(symbol)==null;
+    }
     
     private boolean reachable(String symbol, Token token) {
-        return reachableHelper(symbol, token, new HashSet<>());
-    }
-    
-    private boolean reachableHelper(String symbol, Token token, Set<String> visitedSymbols) {
-        // If symbol is a terminal, check if it matches the current token
         if (!grammar.containsKey(symbol)) {
-            return grammarContainsValue(symbol);
-        }
-    
-        // If this symbol is already being checked in the current recursion path, stop recursion
-        if (visitedSymbols.contains(symbol)) {
+            // Check if the token is a direct match with the terminal symbol
+            if (symbol.equals(getTokenWord(token))) {
+                return true; // Found a direct match with the token type
+            }
             return false;
         }
     
-        // Mark the symbol as visited
-        visitedSymbols.add(symbol);
-    
         for (List<String> production : grammar.get(symbol)) {
             for (String element : production) {
-                // If the element matches the token directly
                 if (element.equals(getTokenWord(token))) {
-                    return true;
+                    return true; // Found a direct match with the token type
                 }
     
                 // Recursively check if the token is reachable from the non-terminal
-                if (!element.equals(symbol) && grammar.containsKey(element) && reachableHelper(element, token, visitedSymbols)) {
+                if (grammar.containsKey(element) && reachable(element, token)) {
                     return true;
                 }
             }
         }
-    
-        // Remove the symbol from visitedSymbols to allow future checks in different contexts
-        visitedSymbols.remove(symbol);
         return false;
     }
     
@@ -373,13 +435,13 @@ class RecSPLParser {
 
     public String getTokenWord(Token token) {
         if(token.tokenClass.equals("V")) {
-            return "VNAME";
+            return "V";
         } else if(token.tokenClass.equals("F")) {
-            return "FNAME";
+            return "F";
         } else if(token.tokenClass.equals("N")) {
-            return "CONST";
+            return "N";
         } else if(token.tokenClass.equals("T")) {
-            return "CONST";
+            return "T";
         } else if(token.tokenClass.equals("reserved_keyword")) {
             return token.word;
         }
