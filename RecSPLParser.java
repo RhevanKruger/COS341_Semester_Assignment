@@ -266,30 +266,7 @@ class RecSPLParser {
     }
     private boolean parseSymbol(Node parentNode, String symbol, Token currentToken) {
         System.out.println("parseSymbol: " + symbol + " token " + currentToken.word + " currentTokenIndex: " + currentTokenIndex);
-    
         if (!grammar.containsKey(symbol)) {
-            if (parentNode.getSymbol().equals(",") && symbol.equals(",")) {
-                if (currentToken.word.equals(",")) {
-                    Node commaNode = new Node(generateUNID(), ",", true);
-                    parentNode.addChild(commaNode);
-                    syntaxTree.addLeafNode(commaNode);
-                    currentTokenIndex++;
-                    return true;
-                } else {
-                    return false;
-                }
-            }
-            else if (parentNode.getSymbol().equals(";") && symbol.equals(";")) {
-                if (currentToken.word.equals(";")) {
-                    Node commaNode = new Node(generateUNID(), ";", true);
-                    parentNode.addChild(commaNode);
-                    syntaxTree.addLeafNode(commaNode);
-                    currentTokenIndex++;
-                    return true;
-                } else {
-                    return false;
-                }
-            }
             if (reachable(symbol, currentToken)) {
                 System.out.println("Reached terminal symbol: " + symbol + " token " + currentToken.word + " currentTokenIndex: " + currentTokenIndex);
                 Node childNode = new Node(generateUNID(), currentToken.word, true);
@@ -303,6 +280,14 @@ class RecSPLParser {
         } else {
             boolean matched = false;
             for (List<String> production : grammar.get(symbol)) {
+                //check if production is empty 
+                if((production.isEmpty() || symbol.equals("SUBFUNCS"))&&isNullable(symbol,currentToken)) {
+                    matched = true;
+                    break;
+                }
+                else if(production.isEmpty()) {
+                    break;
+                }
                 List<Node> childNodes = new ArrayList<>();
                 ArrayList<Boolean> productionMatches =new ArrayList<Boolean>();
                             
@@ -326,6 +311,20 @@ class RecSPLParser {
                 if (grammar.containsKey(production.get(0))&&!firstSets.get(production.get(0)).contains(getTokenWord(currentToken))) {
                     continue;//check other rules
                 }
+                //handle ambiguous ASSIGN rule
+                if (symbol.equals("ASSIGN")) {
+                    // Check if current token is a variable and its next token matches the current production
+                    if (getTokenWord(currentToken).equals("V")) {
+                        // Look ahead to check if the next token is '=' or '<'
+                        Token nextToken = tokens.get(currentTokenIndex + 1);
+                
+                        // Continue if the next token doesn't match the expected '<' or '='
+                        if (!(production.get(1).equals("<") && nextToken.word.equals("<")) &&
+                            !(production.get(1).equals("=") && nextToken.word.equals("="))) {
+                            continue;
+                        }
+                    }
+                }
 
                 //handle non terminal symbols with multiple children
                 for (String childSymbol : production) {
@@ -334,6 +333,7 @@ class RecSPLParser {
                         productionMatches.add(false);
                         break;
                     }
+                    
                     if(childSymbol.equals(symbol) ) {
                         //handle nullable symbols
                         productionMatches.add(true);
@@ -386,8 +386,22 @@ class RecSPLParser {
         }
         return true;
     }
-    private boolean isNullable(String symbol) {
-        return grammar.get(symbol)==null;
+    private boolean isNullable(String symbol, Token token) {
+        //print parent node symbol and current token
+        System.out.println("isNullable: " + symbol + " token " + token.word + " currentTokenIndex: " + currentTokenIndex);
+        //check if symbol parent node key is GLOBVARS and current token is begin
+        if(symbol.equals("GLOBVARS") && token.word.equals("begin")) {
+            return true;
+        }
+        //check if symbol key is INSTRUC and current token is end
+        else if(symbol.equals("INSTRUC") && token.word.equals("end")) {
+            return true;
+        }
+        //check if symbol key is SUBFUNCS and current token is end
+        else if(symbol.equals("SUBFUNCS") && token.word.equals("end")) {
+            return true;
+        }
+        return false;
     }
     
     private boolean reachable(String symbol, Token token) {
