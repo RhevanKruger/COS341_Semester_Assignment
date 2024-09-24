@@ -19,7 +19,29 @@ class SyntaxTree {
     public void addLeafNode(Node node) {
         leafNodes.add(node);
     }
-
+    public String toString() {
+        StringBuilder tree = new StringBuilder();
+        tree.append("Root: ").append(root.getSymbol()).append(" (ID: ").append(root.getUNID()).append(")\n");
+        tree.append("Inner Nodes: \n");
+        for (Node innerNode : innerNodes) {
+            tree.append("Node ID: ").append(innerNode.getUNID())
+                .append(", Parent ID: ").append(innerNode.parentId)
+                .append(", Symbol: ").append(innerNode.getSymbol())
+                .append(", Children: [");
+            for (Node child : innerNode.getChildren()) {
+                tree.append(child.getUNID()).append(", ");
+            }
+            tree.append("]\n");
+        }
+        tree.append("Leaf Nodes: \n");
+        for (Node leafNode : leafNodes) {
+            tree.append("Node ID: ").append(leafNode.getUNID())
+                .append(", Parent ID: ").append(leafNode.parentId)
+                .append(", Symbol: ").append(leafNode.getSymbol())
+                .append("\n");
+        }
+        return tree.toString();
+    }
     public String toXML() {
         StringBuilder xml = new StringBuilder();
         xml.append("<SYNTREE>\n");
@@ -48,4 +70,45 @@ class SyntaxTree {
         xml.append("</SYNTREE>");
         return xml.toString();
     }
+ // Remove node and its children from the tree
+ public void removeNode(Node node) {
+    // Remove the node from its parent's children list
+    if (node.parentId != -1) { // Assuming -1 indicates no parent (root node)
+        Node parent = findNodeById(node.parentId);
+        if (parent != null) {
+            parent.removeChild(node);
+        }
+    }
+
+    // Recursively remove all children of the node
+    for (Node child : new ArrayList<>(node.getChildren())) {
+        removeNode(child);
+    }
+
+    // Remove the node from the list of inner nodes or leaf nodes
+    if (node.isLeaf()) {
+        leafNodes.remove(node);
+    } else {
+        innerNodes.remove(node);
+    }
+}
+
+// Helper method to find a node by its ID
+private Node findNodeById(int id) {
+    if (root.getUNID() == id) {
+        return root;
+    }
+    for (Node node : innerNodes) {
+        if (node.getUNID() == id) {
+            return node;
+        }
+    }
+    for (Node node : leafNodes) {
+        if (node.getUNID() == id) {
+            return node;
+        }
+    }
+    return null;
+}
+
 }

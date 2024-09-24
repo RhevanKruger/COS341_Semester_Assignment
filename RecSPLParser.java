@@ -10,7 +10,6 @@ import org.w3c.dom.NodeList;
 
 import java.util.ArrayList;
 import java.io.*;
-import java.sql.Array;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -37,6 +36,7 @@ class RecSPLParser {
     private int currentTokenIndex;
     private List<Token> tokens;
     private Map<String, Set<String>> firstSets;
+    private int nodeId = 0;
 
     public RecSPLParser(String xmlFilePath) {
         this.tokens = new ArrayList<>();;
@@ -260,16 +260,22 @@ class RecSPLParser {
     }
 
     public void parse() {
-        Node root = new Node(1, "PROG", false); // Start symbol is "PROG"
+        Node root = new Node(generateUNID(),-1, "PROG", false); // Start symbol is "PROG"
         syntaxTree = new SyntaxTree(root); // Ensure syntaxTree is initialized
         parseSymbol(root, "PROG", tokens.get(currentTokenIndex));
     }
     private boolean parseSymbol(Node parentNode, String symbol, Token currentToken) {
-        System.out.println("parseSymbol: " + symbol + " token " + currentToken.word + " currentTokenIndex: " + currentTokenIndex);
+        //System.out.println("parseSymbol: " + symbol + " token " + currentToken.word + " currentTokenIndex: " + currentTokenIndex);
         if (!grammar.containsKey(symbol)) {
             if (reachable(symbol, currentToken)) {
                 System.out.println("Reached terminal symbol: " + symbol + " token " + currentToken.word + " currentTokenIndex: " + currentTokenIndex);
-                Node childNode = new Node(generateUNID(), currentToken.word, true);
+                System.out.println("Parent Node: " + parentNode.getSymbol()+" is leaf: "+parentNode.isLeaf());
+                if(parentNode.isLeaf()) {
+                    //already added leaf node
+                    currentTokenIndex++;
+                    return true;
+                }
+                Node childNode = new Node(generateUNID(),parentNode.unid, currentToken.word, true);
                 parentNode.addChild(childNode);
                 syntaxTree.addLeafNode(childNode);
                 currentTokenIndex++;
@@ -292,11 +298,10 @@ class RecSPLParser {
                 ArrayList<Boolean> productionMatches =new ArrayList<Boolean>();
                             
                 //handle terminal rules will one element in their list
-                System.out.println("PRODUCATION: " + production+ " TOKEN: " + currentToken.word + " currentTokenIndex: " + currentTokenIndex);
+                //System.out.println("PRODUCATION: " + production+ " TOKEN: " + currentToken.word + " currentTokenIndex: " + currentTokenIndex);
                 if(production.size() == 1 && !grammar.containsKey(production.get(0))) {
-                    Node tempNode = new Node(generateUNID(), production.get(0), false);
-                    if (parseSymbol(tempNode, production.get(0), currentToken)) {
-                        parentNode.addChild(tempNode);
+                    //Node tempNode = new Node(generateUNID(),parentNode.unid, production.get(0), false);
+                    if (parseSymbol(parentNode, production.get(0), currentToken)) {
                         matched = true;
                         break;
                     } else {
@@ -328,7 +333,7 @@ class RecSPLParser {
 
                 //handle non terminal symbols with multiple children
                 for (String childSymbol : production) {
-                    System.out.println("CHILD SYMBOL: " + childSymbol);
+                    //System.out.println("CHILD SYMBOL: " + childSymbol);
                     if (currentTokenIndex >= tokens.size()) {
                         productionMatches.add(false);
                         break;
@@ -340,13 +345,27 @@ class RecSPLParser {
                         if(!allProductionMatchesTrue(productionMatches))
                             break;//check other rules
                     }
-                    Node tempNode = new Node(generateUNID(), childSymbol, false);
+                    Node tempNode;
+                    if(grammar.containsKey(childSymbol)) {
+                        tempNode = new Node(generateUNID(),parentNode.unid, childSymbol, false);
+                        syntaxTree.addInnerNode(tempNode);
+                    }
+                    else{
+                        tempNode = new Node(generateUNID(),parentNode.unid, childSymbol, true);
+                        syntaxTree.addLeafNode(tempNode);
+                    }
+
+                    System.out.println("adding inner node: " + tempNode.getSymbol());
+                    
                     boolean temp = parseSymbol(tempNode, childSymbol, tokens.get(currentTokenIndex));
                     if (temp ) {
+                        System.out.println("Matched temp node: " + tempNode.getSymbol() + " token " + currentToken.word + " currentTokenIndex: " + currentTokenIndex);
                         childNodes.add(tempNode);
                         productionMatches.add(true);
                     } else {
+                        System.out.println("Failed to match temp node: " + tempNode.getSymbol() + " token " + currentToken.word + " currentTokenIndex: " + currentTokenIndex);
                         productionMatches.add(false);
+                        syntaxTree.removeNode(tempNode);
                         //continue checking other child symbols
                     }
                     if (currentTokenIndex < tokens.size()) {
@@ -356,8 +375,10 @@ class RecSPLParser {
     
                 if (productionMatches.contains(true)) {
                     System.out.println("Matched Non terminal production: " + production + " token " + currentToken.word + " currentTokenIndex: " + currentTokenIndex);
-                    Node nonTerminalNode = new Node(generateUNID(), symbol, false);
+                    System.out.println("Parent Node: " + parentNode.getSymbol());
+                    Node nonTerminalNode = new Node(generateUNID(),parentNode.unid, symbol, false);
                     for (Node childNode : childNodes) {
+                        //System.out.println("Adding child node: " + childNode.getSymbol());
                         nonTerminalNode.addChild(childNode);
                     }
                     parentNode.addChild(nonTerminalNode);
@@ -428,19 +449,8 @@ class RecSPLParser {
         return false;
     }
     
-    
-    private boolean grammarContainsValue(String symbol) {
-        for (List<List<String>> outerList : grammar.values()) {
-            for (List<String> innerList : outerList) {
-                if (innerList.contains(symbol)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
     private int generateUNID() {
-        return (int) (Math.random() * 1000); // Replace with a proper unique ID generation logic
+        return nodeId++; // Replace with a proper unique ID generation logic
     }
 
     public String generateSyntaxTreeXML() {
@@ -464,8 +474,13 @@ class RecSPLParser {
         }
     }
     public void writeSyntaxTreeToFile(String fileName) {
+        //log tree
+        // System.out.println("Logging tree  ..................................");
+        // System.out.println(syntaxTree.toString());
+        // System.out.println("................................................");
         try (FileWriter writer = new FileWriter(fileName)) {
             // Get the XML representation of the syntax tree
+
             String xmlContent = syntaxTree.toXML();
             
             // Write the XML content to the file

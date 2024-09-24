@@ -1,12 +1,14 @@
 import java.util.ArrayList;
 import java.util.List;
 class Node {
+    int parentId;
     int unid;
     String symbol; // Non-terminal or terminal symbol
     List<Node> children;
     boolean isLeaf;
 
-    public Node(int unid, String symbol, boolean isLeaf) {
+    public Node(int unid, int p, String symbol, boolean isLeaf) {
+        this.parentId = p;
         this.unid = unid;
         this.symbol = symbol;
         this.children = new ArrayList<>();
@@ -44,7 +46,7 @@ class Node {
         StringBuilder xml = new StringBuilder();
         if (isLeaf) {
             xml.append("<LEAF>\n");
-            xml.append("\t<PARENT>").append(this.unid).append("</PARENT>\n");
+            xml.append("\t<PARENT>").append(this.parentId).append("</PARENT>\n");
             xml.append("\t<UNID>").append(this.unid).append("</UNID>\n");
             xml.append("\t<TERMINAL>\n").append(this.symbol).append("\n\t</TERMINAL>\n");
             xml.append("</LEAF>\n");
@@ -67,13 +69,16 @@ class Node {
     }
     public String toString() {
         //return node representation with its children
-        StringBuilder node = new StringBuilder();
-        node.append("Node{");
-        node.append("unid=").append(unid);
-        node.append(", symbol='").append(symbol).append('\'');
-        node.append(", children=").append(children);
-        node.append(", isLeaf=").append(isLeaf);
-        node.append('}');
-        return node.toString();
+        String temp = "";
+        temp += "Node{" +
+                "unid=" + unid +
+                ", symbol='" + symbol + '\'' +
+                ", children=[";
+        for (Node child : children) {
+            temp += child.getSymbol() + ", ";
+        }
+        temp += "]}";
+        temp += "isLeaf=" + isLeaf;
+        return temp;
     }
 }
